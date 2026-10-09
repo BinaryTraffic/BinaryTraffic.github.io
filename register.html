@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ログイン - smkn apps</title>
+  <title>新規登録 - smkn apps</title>
   <style>
     :root {
       --bg: #f6f7fb; --card: #ffffff; --text: #1f2330; --muted: #6b7180;
@@ -33,11 +33,21 @@
     .subtitle {
       text-align: center; color: var(--muted); margin: 0 0 32px; font-size: 0.95rem;
     }
+    label {
+      display: block; margin-bottom: 6px; font-weight: 600; font-size: 0.9rem;
+    }
+    input {
+      width: 100%; padding: 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 1rem; margin-bottom: 16px;
+    }
+    input:focus {
+      outline: none; border-color: var(--accent);
+    }
     .btn {
       width: 100%; padding: 16px; border-radius: 8px; border: none;
       background: var(--accent); color: white; cursor: pointer;
       font-size: 1rem; font-weight: 600; transition: opacity 0.15s ease;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
     .btn:hover:not(:disabled) { opacity: 0.9; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -65,26 +75,33 @@
 </head>
 <body>
   <div class="container">
-    <h1>ログイン</h1>
-    <p class="subtitle">smkn apps へようこそ</p>
+    <h1>新規登録</h1>
+    <p class="subtitle">パスキーを登録してログインできるようにします</p>
     <div id="error" class="error" hidden></div>
     <div id="info" class="info" hidden></div>
-    <button id="login-btn" class="btn">
-      🔐 生体認証でログイン
-    </button>
+    <form id="register-form">
+      <label for="username">ユーザー名</label>
+      <input type="text" id="username" name="username" required autofocus
+             placeholder="例: smkn" autocomplete="username webauthn">
+      
+      <label for="setup-code">セットアップコード</label>
+      <input type="password" id="setup-code" name="setupCode" required
+             placeholder="管理者から提供されたコード" autocomplete="off">
+      
+      <button type="submit" class="btn">🔐 パスキーを登録</button>
+    </form>
     <footer>
-      <a href="/">← ホームに戻る</a>
-      <span style="margin: 0 8px; color: var(--border);">|</span>
-      <a href="/register.html">新規登録</a>
+      <a href="/login.html">← ログインに戻る</a>
     </footer>
   </div>
 
   <script type="module">
-    import { startAuthentication } from 'https://unpkg.com/@simplewebauthn/browser@11.0.0/dist/bundle/index.js';
+    import { startRegistration } from 'https://unpkg.com/@simplewebauthn/browser@11.0.0/dist/bundle/index.js';
 
     const errorDiv = document.getElementById('error');
     const infoDiv = document.getElementById('info');
-    const loginBtn = document.getElementById('login-btn');
+    const form = document.getElementById('register-form');
+    const submitBtn = form.querySelector('button[type="submit"]');
 
     function showError(message) {
       errorDiv.textContent = message;
@@ -103,54 +120,70 @@
       infoDiv.hidden = true;
     }
 
-    loginBtn.addEventListener('click', async () => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
       hideMessages();
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'ログイン中...';
+      submitBtn.disabled = true;
+      submitBtn.textContent = '登録中...';
 
       try {
-        // Step 1: Get authentication options
-        const optionsRes = await fetch('/api/login/options', {
+        const username = form.username.value.trim();
+        const setupCode = form['setup-code'].value.trim();
+
+        if (!username || !setupCode) {
+          throw new Error('すべての項目を入力してください');
+        }
+
+        // Step 1: Get registration options
+        const optionsRes = await fetch('/api/register/options', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, setupCode }),
         });
 
         if (!optionsRes.ok) {
           const error = await optionsRes.json();
-          throw new Error(error.error || 'ログインオプションの取得に失敗しました');
+          throw new Error(error.error || '登録オプションの取得に失敗しました');
         }
 
-        const { options } = await optionsRes.json();
+        const { options, userId } = await optionsRes.json();
 
-        // Step 2: Start WebAuthn authentication
-        showInfo('デバイスで認証してください...');
-        const authResponse = await startAuthentication(options);
+        // Step 2: Start WebAuthn registration
+        showInfo('デバイスで認証情報を登録してください...');
+        const registrationResponse = await startRegistration(options);
 
-        // Step 3: Verify authentication
-        const verifyRes = await fetch('/api/login/verify', {
+        // Step 3: Verify registration
+        const verifyRes = await fetch('/api/register/verify', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ response: authResponse }),
+          body: JSON.stringify({
+            userId,
+            username,
+            response: registrationResponse,
+          }),
         });
 
         if (!verifyRes.ok) {
           const error = await verifyRes.json();
-          throw new Error(error.error || 'ログインの検証に失敗しました');
+          throw new Error(error.error || '登録の検証に失敗しました');
         }
 
         const result = await verifyRes.json();
         if (result.verified) {
-          window.location.href = '/hub.html';
+          showInfo('登録が完了しました！リダイレクトしています...');
+          setTimeout(() => {
+            window.location.href = '/hub.html';
+          }, 1000);
         } else {
-          throw new Error('認証に失敗しました');
+          throw new Error('登録に失敗しました');
         }
       } catch (error) {
-        console.error('Login error:', error);
-        showError(error.message || 'ログインに失敗しました');
-        loginBtn.disabled = false;
-        loginBtn.innerHTML = '🔐 生体認証でログイン';
+        console.error('Registration error:', error);
+        showError(error.message || '登録に失敗しました');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '🔐 パスキーを登録';
       }
     });
   </script>

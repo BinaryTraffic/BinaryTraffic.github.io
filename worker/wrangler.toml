@@ -1,0 +1,19 @@
+name = "git-smkn-auth"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "git-smkn-auth"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# Environment variables and secrets
+# Set via: wrangler secret put SETUP_CODE
+# [vars]
+# (none needed for now)
+
+# Routes - will be configured manually or via dashboard
+# routes = [
+#   { pattern = "git.smkn.net/api/*", zone_name = "smkn.net" }
+# ]

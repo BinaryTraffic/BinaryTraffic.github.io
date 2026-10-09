@@ -95,6 +95,19 @@
       to { transform: rotate(360deg); }
     }
     footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px; }
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5); align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: var(--card); padding: 32px; border-radius: 16px;
+      max-width: 400px; width: 90%; box-shadow: var(--shadow);
+    }
+    .modal-content h2 { margin: 0 0 16px; }
+    .modal-content p { margin: 0 0 24px; color: var(--muted); }
+    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; }
   </style>
 </head>
 <body>
@@ -106,7 +119,7 @@
         <div class="user-avatar" id="avatar"></div>
         <span id="username">読み込み中...</span>
       </div>
-      <button class="btn" onclick="window.Clerk.openUserProfile()">プロフィール</button>
+      <button class="btn" id="add-device-btn">🔐 デバイスを追加</button>
       <button class="btn" id="logout-btn">ログアウト</button>
     </div>
   </header>
@@ -124,9 +137,28 @@
   </main>
   <footer>&copy; <span id="year"></span> smkn</footer>
 
-  <script src="config.js"></script>
-  <script>
+  <div id="add-device-modal" class="modal">
+    <div class="modal-content">
+      <h2>デバイスを追加</h2>
+      <p id="modal-message">新しいデバイスでパスキーを登録します</p>
+      <div class="modal-actions">
+        <button class="btn" id="modal-cancel">キャンセル</button>
+        <button class="btn btn-primary" id="modal-confirm">登録する</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { startRegistration } from 'https://unpkg.com/@simplewebauthn/browser@11.0.0/dist/bundle/index.js';
+
     document.getElementById("year").textContent = new Date().getFullYear();
+
+    const addDeviceBtn = document.getElementById('add-device-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const modal = document.getElementById('add-device-modal');
+    const modalCancel = document.getElementById('modal-cancel');
+    const modalConfirm = document.getElementById('modal-confirm');
+    const modalMessage = document.getElementById('modal-message');
 
     function el(tag, className, text) {
       const e = document.createElement(tag);
@@ -177,71 +209,120 @@
       }
     }
 
-    // 認証チェックとアプリ読み込み
-    async function init() {
-      if (!window.CLERK_CONFIG || window.CLERK_CONFIG.publishableKey === 'YOUR_PUBLISHABLE_KEY_HERE') {
-        alert('認証設定が完了していません。config.js を確認してください。');
-        window.location.href = '/';
-        return;
-      }
+    // Check authentication
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/me', {
+          credentials: 'include',
+        });
 
-      const clerkScript = document.createElement('script');
-      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
-      clerkScript.async = true;
-      clerkScript.crossOrigin = 'anonymous';
-      clerkScript.setAttribute('data-clerk-publishable-key', window.CLERK_CONFIG.publishableKey);
-      
-      clerkScript.onload = async () => {
-        try {
-          await window.Clerk.load();
-
-          // 未ログインの場合はログインページへ
-          if (!window.Clerk.user) {
-            window.location.href = '/login.html';
-            return;
-          }
-
-          // ユーザー情報を表示
-          const user = window.Clerk.user;
-          const username = user.username || user.primaryEmailAddress?.emailAddress || 'ユーザー';
-          document.getElementById('username').textContent = username;
-          
-          const avatarEl = document.getElementById('avatar');
-          if (user.imageUrl) {
-            avatarEl.style.backgroundImage = `url(${user.imageUrl})`;
-            avatarEl.style.backgroundSize = 'cover';
-          } else {
-            avatarEl.textContent = username.charAt(0).toUpperCase();
-          }
-
-          // ログアウトボタン
-          document.getElementById('logout-btn').addEventListener('click', async () => {
-            await window.Clerk.signOut();
-            window.location.href = '/';
-          });
-
-          // アプリ一覧を読み込み
-          fetch("apps.json", { cache: "no-store" })
-            .then(r => r.ok ? r.json() : [])
-            .then(renderApps)
-            .catch(() => renderApps([]));
-
-        } catch (err) {
-          console.error('Clerk initialization error:', err);
-          alert('認証システムの初期化に失敗しました');
-          window.location.href = '/';
+        if (!res.ok || res.status === 401) {
+          window.location.href = '/login.html';
+          return;
         }
-      };
 
-      clerkScript.onerror = () => {
-        alert('認証システムの読み込みに失敗しました');
-        window.location.href = '/';
-      };
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = '/login.html';
+          return;
+        }
 
-      document.head.appendChild(clerkScript);
+        // Display user info
+        document.getElementById('username').textContent = data.username;
+        const avatarEl = document.getElementById('avatar');
+        avatarEl.textContent = data.username.charAt(0).toUpperCase();
+
+        // Load apps
+        fetch("apps.json", { cache: "no-store" })
+          .then(r => r.ok ? r.json() : [])
+          .then(renderApps)
+          .catch(() => renderApps([]));
+
+      } catch (error) {
+        console.error('Auth check error:', error);
+        window.location.href = '/login.html';
+      }
     }
 
-    init();
+    // Logout
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await fetch('/api/logout', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        window.location.href = '/';
+      } catch (error) {
+        console.error('Logout error:', error);
+        window.location.href = '/';
+      }
+    });
+
+    // Add device modal
+    addDeviceBtn.addEventListener('click', () => {
+      modal.classList.add('active');
+    });
+
+    modalCancel.addEventListener('click', () => {
+      modal.classList.remove('active');
+      modalMessage.textContent = '新しいデバイスでパスキーを登録します';
+      modalConfirm.disabled = false;
+    });
+
+    modalConfirm.addEventListener('click', async () => {
+      modalConfirm.disabled = true;
+      modalMessage.textContent = '処理中...';
+
+      try {
+        // Step 1: Get registration options
+        const optionsRes = await fetch('/api/add-device/options', {
+          method: 'POST',
+          credentials: 'include',
+        });
+
+        if (!optionsRes.ok) {
+          const error = await optionsRes.json();
+          throw new Error(error.error || 'オプションの取得に失敗しました');
+        }
+
+        const { options } = await optionsRes.json();
+
+        // Step 2: Start WebAuthn registration
+        modalMessage.textContent = 'デバイスで認証情報を登録してください...';
+        const registrationResponse = await startRegistration(options);
+
+        // Step 3: Verify registration
+        const verifyRes = await fetch('/api/add-device/verify', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ response: registrationResponse }),
+        });
+
+        if (!verifyRes.ok) {
+          const error = await verifyRes.json();
+          throw new Error(error.error || '検証に失敗しました');
+        }
+
+        const result = await verifyRes.json();
+        if (result.verified) {
+          modalMessage.textContent = 'デバイスが追加されました！';
+          setTimeout(() => {
+            modal.classList.remove('active');
+            modalMessage.textContent = '新しいデバイスでパスキーを登録します';
+            modalConfirm.disabled = false;
+          }, 2000);
+        } else {
+          throw new Error('検証に失敗しました');
+        }
+      } catch (error) {
+        console.error('Add device error:', error);
+        modalMessage.textContent = 'エラー: ' + error.message;
+        modalConfirm.disabled = false;
+      }
+    });
+
+    checkAuth();
   </script>
 </body>
 </html>
