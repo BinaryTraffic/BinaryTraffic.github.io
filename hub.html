@@ -279,6 +279,7 @@
       let targetAngle = 0;
       let currentAngle = 0;
       let isPointerInWindow = false;
+      let isTouchDown = false; // Track if touch is currently pressed
       let animationFrameId = null;
       
       // Initialize eye center lazily (after SVG is fully rendered)
@@ -348,7 +349,10 @@
         }
         
         try {
-          if (isPointerInWindow) {
+          // Track if: (mouse hover on desktop) OR (touch is actively pressed)
+          const shouldTrack = isPointerInWindow || isTouchDown;
+          
+          if (shouldTrack) {
             // Smooth lerp with dynamic factor based on reduced motion
             currentAngle = lerp(currentAngle, targetAngle, lerpFactor);
           } else {
@@ -366,32 +370,53 @@
       }
       
       // Event handlers
+      function handlePointerDown(e) {
+        if (e.pointerType === 'touch') {
+          isTouchDown = true;
+          updateEyePosition(e.clientX, e.clientY);
+        }
+      }
+
       function handlePointerMove(e) {
-        isPointerInWindow = true;
-        updateEyePosition(e.clientX, e.clientY);
+        if (e.pointerType === 'touch') {
+          // Touch: only track while pressed
+          if (isTouchDown) {
+            updateEyePosition(e.clientX, e.clientY);
+          }
+        } else {
+          // Mouse: track on hover (existing behavior)
+          isPointerInWindow = true;
+          updateEyePosition(e.clientX, e.clientY);
+        }
+      }
+
+      function handlePointerUp(e) {
+        if (e.pointerType === 'touch') {
+          isTouchDown = false;
+        }
+      }
+
+      function handlePointerCancel(e) {
+        if (e.pointerType === 'touch') {
+          isTouchDown = false;
+        }
       }
       
       function handlePointerLeave(e) {
-        // Only reset if pointer actually left the window
-        if (e.target === document.documentElement || e.relatedTarget === null) {
+        // Only reset if pointer actually left the window (mouse only)
+        if (!e.relatedTarget && !e.toElement) {
           isPointerInWindow = false;
         }
       }
       
-      // Attach events to window/document
+      // Attach events to window/document with passive listeners
+      window.addEventListener('pointerdown', handlePointerDown, { passive: true });
       window.addEventListener('pointermove', handlePointerMove, { passive: true });
-      window.addEventListener('touchmove', (e) => {
-        if (e.touches.length > 0) {
-          handlePointerMove(e.touches[0]);
-        }
-      }, { passive: true });
+      window.addEventListener('pointerup', handlePointerUp, { passive: true });
+      window.addEventListener('pointercancel', handlePointerCancel, { passive: true });
       
       // Use mouseout on document to detect when mouse leaves viewport
-      document.addEventListener('mouseout', (e) => {
-        if (!e.relatedTarget && !e.toElement) {
-          isPointerInWindow = false;
-        }
-      });
+      document.addEventListener('mouseout', handlePointerLeave, { passive: true });
       
       window.addEventListener('blur', () => {
         isPointerInWindow = false;
