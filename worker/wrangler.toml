@@ -20,9 +20,14 @@ database_id = "95392e94-0f6f-47ad-8081-49f5d6d23116"
 
 # Environment variables and secrets
 # Secrets (sensitive, set via: wrangler secret put <NAME>):
-#   RESEND_API_KEY - Resend API key for sending emails (required)
 #   SETUP_CODE - Optional admin fallback for registration (optional, disabled by default)
 #
 # Variables (non-sensitive, can be set in wrangler.toml):
 [vars]
 MAIL_FROM = "noreply@smkn.net"
+
+# Cloudflare Email Service (Email Sending) binding used for OTP emails.
+# smkn.net must be onboarded under Compute > Email Service > Email Sending
+# (Workers Paid plan required for sending to arbitrary recipients).
+[[send_email]]
+name = "EMAIL"

@@ -1,5 +1,6 @@
--- Add email column to users (nullable for existing users)
-ALTER TABLE users ADD COLUMN email TEXT UNIQUE;
+-- Add email column to users (nullable for existing users).
+-- SQLite cannot ADD COLUMN with UNIQUE; uniqueness is enforced by the index below.
+ALTER TABLE users ADD COLUMN email TEXT;
 
 -- Create verification codes table (supports email/SMS channels)
 CREATE TABLE IF NOT EXISTS verification_codes (
@@ -29,4 +30,4 @@ CREATE INDEX IF NOT EXISTS idx_verification_codes_recipient ON verification_code
 CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON verification_codes(expires_at);
 CREATE INDEX IF NOT EXISTS idx_verification_sends_recipient ON verification_sends(recipient, channel, sent_at);
 CREATE INDEX IF NOT EXISTS idx_verification_sends_ip ON verification_sends(ip_address, sent_at);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);

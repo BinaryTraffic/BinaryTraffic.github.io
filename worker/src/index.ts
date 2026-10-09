@@ -13,7 +13,7 @@ import type {
 
 interface Env {
   DB: D1Database;
-  RESEND_API_KEY: string;
+  EMAIL: SendEmail; // Cloudflare Email Service send_email binding
   MAIL_FROM?: string;
   SETUP_CODE?: string; // Optional admin fallback
 }
@@ -186,24 +186,20 @@ async function sendEmailOTP(env: Env, email: string, code: string, isRecovery: b
   `;
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: email,
-        subject,
-        text,
-        html,
-      }),
+    // Cloudflare Email Service (Email Sending) via the send_email binding.
+    // The sender domain (smkn.net) must be onboarded for Email Sending.
+    const result = await env.EMAIL.send({
+      to: email,
+      from: { email: from, name: 'smkn apps' },
+      subject,
+      text,
+      html,
     });
-
-    return response.ok;
-  } catch (error) {
-    console.error('Email send error:', error);
+    console.log('Email sent', { messageId: result?.messageId });
+    return true;
+  } catch (error: any) {
+    // Binding throws on failure (e.g. E_SENDER_NOT_VERIFIED, E_RECIPIENT_SUPPRESSED)
+    console.error('Email send error:', error?.code ?? '', error?.message ?? error);
     return false;
   }
 }
