@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>smkn apps</title>
+  <meta name="description" content="smkn で作成したアプリの一覧">
+  <style>
+    :root {
+      --bg: #f6f7fb; --card: #ffffff; --text: #1f2330; --muted: #6b7180;
+      --accent: #3b6cf6; --border: #e3e6ee; --shadow: 0 2px 10px rgba(20, 30, 60, .06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12141a; --card: #1b1e27; --text: #e8eaf0; --muted: #9aa1b2;
+        --accent: #7c9cff; --border: #2a2f3c; --shadow: 0 2px 10px rgba(0, 0, 0, .3);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+      line-height: 1.6;
+    }
+    header {
+      padding: 48px 20px 24px; text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0; font-size: clamp(1.8rem, 5vw, 2.6rem); letter-spacing: .02em; }
+    header p { margin: 8px 0 0; color: var(--muted); }
+    .header-actions {
+      display: flex; gap: 12px; justify-content: center; align-items: center;
+      margin-top: 24px; flex-wrap: wrap;
+    }
+    .user-info {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 20px;
+      font-size: 0.9rem;
+    }
+    .user-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--accent); color: white;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 0.85rem;
+    }
+    .btn {
+      padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--card); color: var(--text); cursor: pointer;
+      font-size: 0.9rem; text-decoration: none; display: inline-block;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: var(--bg); border-color: var(--accent);
+    }
+    .btn-primary {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
+    .btn-primary:hover {
+      opacity: 0.9; background: var(--accent);
+    }
+    main { max-width: 1080px; margin: 0 auto; padding: 32px 20px 48px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .card {
+      display: flex; flex-direction: column; gap: 8px; padding: 20px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: var(--shadow); color: inherit; text-decoration: none;
+      transition: transform .15s ease, border-color .15s ease;
+    }
+    .card:hover, .card:focus-visible { transform: translateY(-2px); border-color: var(--accent); outline: none; }
+    .card .icon { font-size: 2rem; line-height: 1; }
+    .card h2 { margin: 0; font-size: 1.15rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .95rem; flex: 1; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
+    .open { font-size: .9rem; color: var(--accent); font-weight: 600; }
+    .empty {
+      text-align: center; padding: 48px 20px; color: var(--muted);
+      border: 2px dashed var(--border); border-radius: 14px;
+    }
+    .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+    .loading {
+      text-align: center; padding: 48px 20px; color: var(--muted);
+    }
+    .spinner {
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>smkn apps</h1>
+    <p>作成したアプリの一覧です</p>
+    <div class="header-actions">
+      <div class="user-info">
+        <div class="user-avatar" id="avatar"></div>
+        <span id="username">読み込み中...</span>
+      </div>
+      <button class="btn" onclick="window.Clerk.openUserProfile()">プロフィール</button>
+      <button class="btn" id="logout-btn">ログアウト</button>
+    </div>
+  </header>
+  <main>
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <div>アプリを読み込んでいます...</div>
+    </div>
+    <div id="apps" class="grid" aria-live="polite" hidden></div>
+    <div id="empty" class="empty" hidden>
+      <div class="empty-icon">📦</div>
+      <h2>アプリは準備中です</h2>
+      <p>まだアプリが登録されていません</p>
+    </div>
+  </main>
+  <footer>&copy; <span id="year"></span> smkn</footer>
+
+  <script src="config.js"></script>
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    function el(tag, className, text) {
+      const e = document.createElement(tag);
+      if (className) e.className = className;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function renderApps(apps) {
+      const list = document.getElementById("apps");
+      const empty = document.getElementById("empty");
+      const loading = document.getElementById("loading");
+      
+      loading.hidden = true;
+      list.replaceChildren();
+      
+      if (!Array.isArray(apps) || apps.length === 0) {
+        empty.hidden = false;
+        list.hidden = true;
+        return;
+      }
+      
+      empty.hidden = true;
+      list.hidden = false;
+      
+      for (const app of apps) {
+        if (!app || !app.name || !app.url) continue;
+        const card = el("a", "card");
+        card.href = app.url;
+        if (/^https?:\/\//.test(app.url) && !app.url.startsWith(location.origin)) {
+          card.target = "_blank"; card.rel = "noopener";
+        }
+        card.append(el("div", "icon", app.icon || "📦"));
+        card.append(el("h2", null, app.name));
+        card.append(el("p", null, app.description || ""));
+        if (Array.isArray(app.tags) && app.tags.length) {
+          const tags = el("div", "tags");
+          app.tags.forEach(t => tags.append(el("span", "tag", t)));
+          card.append(tags);
+        }
+        card.append(el("span", "open", "開く →"));
+        list.append(card);
+      }
+      
+      if (!list.children.length) {
+        empty.hidden = false;
+        list.hidden = true;
+      }
+    }
+
+    // 認証チェックとアプリ読み込み
+    async function init() {
+      if (!window.CLERK_CONFIG || window.CLERK_CONFIG.publishableKey === 'YOUR_PUBLISHABLE_KEY_HERE') {
+        alert('認証設定が完了していません。config.js を確認してください。');
+        window.location.href = '/';
+        return;
+      }
+
+      const clerkScript = document.createElement('script');
+      clerkScript.src = 'https://accounts.app.clerk.com/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+      clerkScript.async = true;
+      clerkScript.crossOrigin = 'anonymous';
+      
+      clerkScript.onload = async () => {
+        try {
+          const clerk = window.Clerk;
+          await clerk.load({
+            publishableKey: window.CLERK_CONFIG.publishableKey,
+            localization: {
+              locale: 'ja-JP'
+            }
+          });
+
+          // 未ログインの場合はログインページへ
+          if (!clerk.user) {
+            window.location.href = '/login.html';
+            return;
+          }
+
+          // ユーザー情報を表示
+          const user = clerk.user;
+          const username = user.username || user.primaryEmailAddress?.emailAddress || 'ユーザー';
+          document.getElementById('username').textContent = username;
+          
+          const avatarEl = document.getElementById('avatar');
+          if (user.imageUrl) {
+            avatarEl.style.backgroundImage = `url(${user.imageUrl})`;
+            avatarEl.style.backgroundSize = 'cover';
+          } else {
+            avatarEl.textContent = username.charAt(0).toUpperCase();
+          }
+
+          // ログアウトボタン
+          document.getElementById('logout-btn').addEventListener('click', async () => {
+            await clerk.signOut();
+            window.location.href = '/';
+          });
+
+          // アプリ一覧を読み込み
+          fetch("apps.json", { cache: "no-store" })
+            .then(r => r.ok ? r.json() : [])
+            .then(renderApps)
+            .catch(() => renderApps([]));
+
+        } catch (err) {
+          console.error('Clerk initialization error:', err);
+          alert('認証システムの初期化に失敗しました');
+          window.location.href = '/';
+        }
+      };
+
+      clerkScript.onerror = () => {
+        alert('認証システムの読み込みに失敗しました');
+        window.location.href = '/';
+      };
+
+      document.head.appendChild(clerkScript);
+    }
+
+    init();
+  </script>
+</body>
+</html>
