@@ -2,18 +2,23 @@ name = "git-smkn-auth"
 main = "src/index.ts"
 compatibility_date = "2024-10-01"
 
+# Routes: the API is served on the same origin as the GitHub Pages site
+# (required for WebAuthn RP ID git.smkn.net and same-site session cookies).
+# Top-level keys must come before any [table] section in TOML.
+routes = [
+  { pattern = "git.smkn.net/api/*", zone_name = "smkn.net" }
+]
+
+# No workers.dev URL; the Worker is only reachable through the route above
+workers_dev = false
+
 # D1 Database binding
 [[d1_databases]]
 binding = "DB"
 database_name = "git-smkn-auth"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "95392e94-0f6f-47ad-8081-49f5d6d23116"
 
 # Environment variables and secrets
 # Set via: wrangler secret put SETUP_CODE
 # [vars]
 # (none needed for now)
-
-# Routes - will be configured manually or via dashboard
-# routes = [
-#   { pattern = "git.smkn.net/api/*", zone_name = "smkn.net" }
-# ]

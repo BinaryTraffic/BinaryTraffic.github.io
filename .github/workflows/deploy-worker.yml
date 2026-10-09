@@ -1,11 +1,6 @@
 name: Deploy Worker
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'worker/**'
   workflow_dispatch:
 
 jobs:
@@ -24,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: worker
-        run: npm ci
+        run: npm install
 
       - name: Deploy to Cloudflare Workers
         working-directory: worker

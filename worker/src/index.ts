@@ -4,10 +4,12 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
+import { isoBase64URL, decodeClientDataJSON } from '@simplewebauthn/server/helpers';
 import type {
   RegistrationResponseJSON,
   AuthenticationResponseJSON,
-} from '@simplewebauthn/server/esm/deps';
+  AuthenticatorTransportFuture,
+} from '@simplewebauthn/types';
 
 interface Env {
   DB: D1Database;
@@ -98,10 +100,13 @@ function jsonResponse(data: any, status = 200): Response {
 async function handleRegisterOptions(request: Request, env: Env): Promise<Response> {
   try {
     const body = await request.json() as { username: string; setupCode: string };
-    
-    // Verify setup code for new user registration
-    if (body.setupCode !== env.SETUP_CODE) {
+
+    // Verify setup code for new user registration (fail closed if the secret is unset)
+    if (!env.SETUP_CODE || typeof body.setupCode !== 'string' || body.setupCode !== env.SETUP_CODE) {
       return jsonResponse({ error: 'セットアップコードが正しくありません' }, 401);
+    }
+    if (typeof body.username !== 'string' || !body.username.trim() || body.username.length > 64) {
+      return jsonResponse({ error: 'ユーザー名が正しくありません' }, 400);
     }
 
     // Check if username already exists
@@ -117,7 +122,7 @@ async function handleRegisterOptions(request: Request, env: Env): Promise<Respon
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
       rpID: RP_ID,
-      userID: userId,
+      userID: new TextEncoder().encode(userId),
       userName: body.username,
       attestationType: 'none',
       authenticatorSelection: {
@@ -169,7 +174,7 @@ async function handleRegisterVerify(request: Request, env: Env): Promise<Respons
       return jsonResponse({ error: '登録の検証に失敗しました' }, 400);
     }
 
-    const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+    const { credential } = verification.registrationInfo;
 
     // Store user and credential
     const now = Date.now();
@@ -182,9 +187,9 @@ async function handleRegisterVerify(request: Request, env: Env): Promise<Respons
       ).bind(
         generateId(),
         body.userId,
-        Buffer.from(credentialID).toString('base64'),
-        Buffer.from(credentialPublicKey).toString('base64'),
-        counter,
+        credential.id, // base64url (matches AuthenticationResponseJSON.id)
+        isoBase64URL.fromBuffer(credential.publicKey),
+        credential.counter,
         JSON.stringify(body.response.response.transports || []),
         now
       ),
@@ -255,10 +260,11 @@ async function handleLoginVerify(request: Request, env: Env): Promise<Response> 
       return jsonResponse({ error: '認証情報が見つかりません' }, 400);
     }
 
-    // Get challenge
+    // Get the exact challenge the authenticator signed (issued by /api/login/options)
+    const clientChallenge = decodeClientDataJSON(body.response.response.clientDataJSON).challenge;
     const challengeRow = await env.DB.prepare(
-      'SELECT challenge FROM challenges WHERE expires_at > ? ORDER BY expires_at DESC LIMIT 1'
-    ).bind(Date.now()).first<{ challenge: string }>();
+      'SELECT challenge FROM challenges WHERE challenge = ? AND user_id IS NULL AND expires_at > ?'
+    ).bind(clientChallenge, Date.now()).first<{ challenge: string }>();
 
     if (!challengeRow) {
       return jsonResponse({ error: 'チャレンジが見つからないか、有効期限が切れています' }, 400);
@@ -270,11 +276,11 @@ async function handleLoginVerify(request: Request, env: Env): Promise<Response> 
       expectedChallenge: challengeRow.challenge,
       expectedOrigin: ORIGIN,
       expectedRPID: RP_ID,
-      authenticator: {
-        credentialID: Buffer.from(credentialRow.credential_id, 'base64'),
-        credentialPublicKey: Buffer.from(credentialRow.public_key, 'base64'),
+      credential: {
+        id: credentialRow.credential_id,
+        publicKey: isoBase64URL.toBuffer(credentialRow.public_key),
         counter: credentialRow.counter,
-        transports: JSON.parse(credentialRow.transports || '[]'),
+        transports: JSON.parse(credentialRow.transports || '[]') as AuthenticatorTransportFuture[],
       },
     });
 
@@ -332,14 +338,13 @@ async function handleAddDeviceOptions(request: Request, env: Env): Promise<Respo
     ).bind(userId).all<{ credential_id: string }>();
 
     const excludeCredentials = existingCreds.results.map(row => ({
-      id: Buffer.from(row.credential_id, 'base64'),
-      type: 'public-key' as const,
+      id: row.credential_id,
     }));
 
     const options = await generateRegistrationOptions({
       rpName: RP_NAME,
       rpID: RP_ID,
-      userID: userId,
+      userID: new TextEncoder().encode(userId),
       userName: user.username,
       attestationType: 'none',
       excludeCredentials,
@@ -395,7 +400,7 @@ async function handleAddDeviceVerify(request: Request, env: Env): Promise<Respon
       return jsonResponse({ error: 'デバイスの検証に失敗しました' }, 400);
     }
 
-    const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+    const { credential } = verification.registrationInfo;
 
     // Store new credential
     await env.DB.batch([
@@ -404,9 +409,9 @@ async function handleAddDeviceVerify(request: Request, env: Env): Promise<Respon
       ).bind(
         generateId(),
         userId,
-        Buffer.from(credentialID).toString('base64'),
-        Buffer.from(credentialPublicKey).toString('base64'),
-        counter,
+        credential.id, // base64url (matches AuthenticationResponseJSON.id)
+        isoBase64URL.fromBuffer(credential.publicKey),
+        credential.counter,
         JSON.stringify(body.response.response.transports || []),
         Date.now()
       ),

@@ -125,7 +125,7 @@
 
         // Step 2: Start WebAuthn authentication
         showInfo('デバイスで認証してください...');
-        const authResponse = await startAuthentication(options);
+        const authResponse = await startAuthentication({ optionsJSON: options });
 
         // Step 3: Verify authentication
         const verifyRes = await fetch('/api/login/verify', {

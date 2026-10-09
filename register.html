@@ -151,7 +151,7 @@
 
         // Step 2: Start WebAuthn registration
         showInfo('デバイスで認証情報を登録してください...');
-        const registrationResponse = await startRegistration(options);
+        const registrationResponse = await startRegistration({ optionsJSON: options });
 
         // Step 3: Verify registration
         const verifyRes = await fetch('/api/register/verify', {
