@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>新規登録 - smkn apps</title>
+  <title>パスキー復旧 - smkn apps</title>
   <style>
     :root {
       --bg: #f6f7fb; --card: #ffffff; --text: #1f2330; --muted: #6b7180;
@@ -89,21 +89,17 @@
 </head>
 <body>
   <div class="container">
-    <h1>新規登録</h1>
-    <p class="subtitle">メール認証でパスキーを登録します</p>
+    <h1>パスキー復旧</h1>
+    <p class="subtitle">登録済みのメールアドレスで新しいパスキーを追加します</p>
     <div id="error" class="error" hidden></div>
     <div id="info" class="info" hidden></div>
 
-    <!-- Step 1: Email & Username -->
+    <!-- Step 1: Email -->
     <div id="step1" class="step active">
       <form id="email-form">
         <label for="email">メールアドレス</label>
         <input type="email" id="email" name="email" required autofocus
-               placeholder="your@email.com" autocomplete="email">
-        
-        <label for="username">ユーザー名</label>
-        <input type="text" id="username" name="username" required
-               placeholder="例: smkn" autocomplete="username">
+               placeholder="登録済みのメールアドレス" autocomplete="email">
         
         <button type="submit" class="btn">認証コードを送信</button>
       </form>
@@ -125,18 +121,17 @@
       </form>
     </div>
 
-    <!-- Step 3: Register Passkey -->
+    <!-- Step 3: Register New Passkey -->
     <div id="step3" class="step">
       <p style="text-align: center; color: var(--muted); font-size: 0.9rem;">
-        メール認証が完了しました！
+        メール認証が完了しました！<br>
+        新しいデバイスでパスキーを登録してください
       </p>
-      <button class="btn" id="register-passkey-btn">🔐 パスキーを登録</button>
+      <button class="btn" id="register-passkey-btn">🔐 新しいパスキーを登録</button>
     </div>
 
     <footer>
       <a href="/login.html">← ログインに戻る</a>
-      <span style="margin: 0 8px; color: var(--border);">|</span>
-      <a href="/recover.html">パスキーを紛失した場合</a>
     </footer>
   </div>
 
@@ -150,9 +145,9 @@
     const step3 = document.getElementById('step3');
     
     let currentEmail = '';
-    let currentUsername = '';
     let codeId = '';
-    let verificationToken = '';
+    let userId = '';
+    let options = null;
 
     function showError(message) {
       errorDiv.textContent = message;
@@ -179,7 +174,7 @@
       hideMessages();
     }
 
-    // Step 1: Send verification code
+    // Step 1: Send recovery code
     document.getElementById('email-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       hideMessages();
@@ -190,13 +185,12 @@
 
       try {
         currentEmail = document.getElementById('email').value.trim();
-        currentUsername = document.getElementById('username').value.trim();
 
-        const res = await fetch('/api/verify/send', {
+        const res = await fetch('/api/recover/send', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail, username: currentUsername }),
+          body: JSON.stringify({ email: currentEmail }),
         });
 
         if (!res.ok) {
@@ -205,11 +199,16 @@
         }
 
         const data = await res.json();
-        codeId = data.codeId;
+        if (data.codeId) {
+          codeId = data.codeId;
+        }
         
         document.getElementById('sent-email').textContent = currentEmail;
         goToStep(step2);
         document.getElementById('code').focus();
+        
+        // Show generic message for security
+        showInfo(data.message || 'メールアドレスが登録されている場合、コードを送信しました');
       } catch (error) {
         console.error('Send error:', error);
         showError(error.message || 'コードの送信に失敗しました');
@@ -230,7 +229,11 @@
       try {
         const code = document.getElementById('code').value.trim();
 
-        const res = await fetch('/api/verify/check', {
+        if (!codeId) {
+          throw new Error('コードが見つかりません。最初からやり直してください');
+        }
+
+        const res = await fetch('/api/recover/verify', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -243,7 +246,8 @@
         }
 
         const data = await res.json();
-        verificationToken = data.verificationToken;
+        userId = data.userId;
+        options = data.options;
         
         goToStep(step3);
       } catch (error) {
@@ -262,11 +266,11 @@
       btn.textContent = '送信中...';
 
       try {
-        const res = await fetch('/api/verify/send', {
+        const res = await fetch('/api/recover/send', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail, username: currentUsername }),
+          body: JSON.stringify({ email: currentEmail }),
         });
 
         if (!res.ok) {
@@ -275,7 +279,9 @@
         }
 
         const data = await res.json();
-        codeId = data.codeId;
+        if (data.codeId) {
+          codeId = data.codeId;
+        }
         
         showInfo('新しいコードを送信しました');
       } catch (error) {
@@ -287,7 +293,7 @@
       }
     });
 
-    // Step 3: Register passkey
+    // Step 3: Register new passkey
     document.getElementById('register-passkey-btn').addEventListener('click', async () => {
       hideMessages();
       const btn = document.getElementById('register-passkey-btn');
@@ -295,36 +301,16 @@
       btn.textContent = '処理中...';
 
       try {
-        // Get registration options
-        const optionsRes = await fetch('/api/register/options', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: currentUsername, verificationToken }),
-        });
-
-        if (!optionsRes.ok) {
-          const error = await optionsRes.json();
-          throw new Error(error.error || 'オプションの取得に失敗しました');
-        }
-
-        const { options, userId, email } = await optionsRes.json();
-
         // Start WebAuthn registration
         showInfo('デバイスで認証情報を登録してください...');
         const registrationResponse = await startRegistration({ optionsJSON: options });
 
-        // Verify registration
-        const verifyRes = await fetch('/api/register/verify', {
+        // Verify registration (using add-device endpoint)
+        const verifyRes = await fetch('/api/add-device/verify', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            username: currentUsername,
-            email,
-            response: registrationResponse,
-          }),
+          body: JSON.stringify({ response: registrationResponse }),
         });
 
         if (!verifyRes.ok) {
@@ -334,10 +320,10 @@
 
         const result = await verifyRes.json();
         if (result.verified) {
-          showInfo('登録が完了しました！リダイレクトしています...');
+          showInfo('新しいパスキーが登録されました！ログインページに移動します...');
           setTimeout(() => {
-            window.location.href = '/hub.html';
-          }, 1000);
+            window.location.href = '/login.html';
+          }, 2000);
         } else {
           throw new Error('登録に失敗しました');
         }
@@ -345,7 +331,7 @@
         console.error('Registration error:', error);
         showError(error.message || 'パスキーの登録に失敗しました');
         btn.disabled = false;
-        btn.textContent = '🔐 パスキーを登録';
+        btn.textContent = '🔐 新しいパスキーを登録';
       }
     });
   </script>
