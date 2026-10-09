@@ -97,24 +97,20 @@
     if (!window.CLERK_CONFIG || window.CLERK_CONFIG.publishableKey === 'YOUR_PUBLISHABLE_KEY_HERE') {
       showError('認証設定が完了していません。config.js を確認してください。');
     } else {
-      // Clerk SDK を動的に読み込み
+      // Clerk SDK を動的に読み込み（v5+ パターン）
       const clerkScript = document.createElement('script');
-      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`;
+      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
       clerkScript.async = true;
       clerkScript.crossOrigin = 'anonymous';
+      clerkScript.setAttribute('data-clerk-publishable-key', window.CLERK_CONFIG.publishableKey);
       
       clerkScript.onload = async () => {
         try {
-          const clerk = window.Clerk;
-          await clerk.load({
-            publishableKey: window.CLERK_CONFIG.publishableKey,
-            localization: {
-              locale: 'ja-JP'
-            }
-          });
+          // Clerk v5+ では window.Clerk が自動的にインスタンス化される
+          await window.Clerk.load();
 
           // すでにログイン済みの場合はリダイレクト
-          if (clerk.user) {
+          if (window.Clerk.user) {
             window.location.href = '/hub.html';
             return;
           }
@@ -123,7 +119,7 @@
           const authDiv = document.getElementById('auth');
           authDiv.innerHTML = '';
           
-          clerk.mountSignIn(authDiv, {
+          window.Clerk.mountSignIn(authDiv, {
             appearance: {
               layout: {
                 socialButtonsVariant: 'iconButton',

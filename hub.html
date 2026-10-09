@@ -186,28 +186,23 @@
       }
 
       const clerkScript = document.createElement('script');
-      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`;
+      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
       clerkScript.async = true;
       clerkScript.crossOrigin = 'anonymous';
+      clerkScript.setAttribute('data-clerk-publishable-key', window.CLERK_CONFIG.publishableKey);
       
       clerkScript.onload = async () => {
         try {
-          const clerk = window.Clerk;
-          await clerk.load({
-            publishableKey: window.CLERK_CONFIG.publishableKey,
-            localization: {
-              locale: 'ja-JP'
-            }
-          });
+          await window.Clerk.load();
 
           // 未ログインの場合はログインページへ
-          if (!clerk.user) {
+          if (!window.Clerk.user) {
             window.location.href = '/login.html';
             return;
           }
 
           // ユーザー情報を表示
-          const user = clerk.user;
+          const user = window.Clerk.user;
           const username = user.username || user.primaryEmailAddress?.emailAddress || 'ユーザー';
           document.getElementById('username').textContent = username;
           
@@ -221,7 +216,7 @@
 
           // ログアウトボタン
           document.getElementById('logout-btn').addEventListener('click', async () => {
-            await clerk.signOut();
+            await window.Clerk.signOut();
             window.location.href = '/';
           });
 

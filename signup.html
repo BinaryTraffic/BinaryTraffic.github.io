@@ -97,21 +97,16 @@
       showError('認証設定が完了していません。config.js を確認してください。');
     } else {
       const clerkScript = document.createElement('script');
-      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`;
+      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js`;
       clerkScript.async = true;
       clerkScript.crossOrigin = 'anonymous';
+      clerkScript.setAttribute('data-clerk-publishable-key', window.CLERK_CONFIG.publishableKey);
       
       clerkScript.onload = async () => {
         try {
-          const clerk = window.Clerk;
-          await clerk.load({
-            publishableKey: window.CLERK_CONFIG.publishableKey,
-            localization: {
-              locale: 'ja-JP'
-            }
-          });
+          await window.Clerk.load();
 
-          if (clerk.user) {
+          if (window.Clerk.user) {
             window.location.href = '/hub.html';
             return;
           }
@@ -119,7 +114,7 @@
           const authDiv = document.getElementById('auth');
           authDiv.innerHTML = '';
           
-          clerk.mountSignUp(authDiv, {
+          window.Clerk.mountSignUp(authDiv, {
             appearance: {
               layout: {
                 socialButtonsVariant: 'iconButton',
