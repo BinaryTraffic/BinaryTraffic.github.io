@@ -13,7 +13,7 @@ import type {
 
 interface Env {
   DB: D1Database;
-  EMAIL: SendEmail; // Cloudflare Email Service send_email binding
+  RESEND_API_KEY: string;
   MAIL_FROM?: string;
   SETUP_CODE?: string; // Optional admin fallback
 }
@@ -168,7 +168,7 @@ async function checkRateLimit(env: Env, recipient: string, channel: string, ip: 
 }
 
 async function sendEmailOTP(env: Env, email: string, code: string, isRecovery: boolean): Promise<boolean> {
-  const from = env.MAIL_FROM || 'noreply@smkn.net';
+  const from = env.MAIL_FROM || 'smkn apps <noreply@smkn.net>';
   const subject = isRecovery ? 'パスキー復旧コード - smkn apps' : '認証コード - smkn apps';
   const text = `認証コード: ${code}\n\nこのコードは10分間有効です。\n\nこのメールに心当たりがない場合は無視してください。`;
   const html = `
@@ -186,20 +186,32 @@ async function sendEmailOTP(env: Env, email: string, code: string, isRecovery: b
   `;
 
   try {
-    // Cloudflare Email Service (Email Sending) via the send_email binding.
-    // The sender domain (smkn.net) must be onboarded for Email Sending.
-    const result = await env.EMAIL.send({
-      to: email,
-      from: { email: from, name: 'smkn apps' },
-      subject,
-      text,
-      html,
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: email,
+        subject,
+        text,
+        html,
+      }),
     });
-    console.log('Email sent', { messageId: result?.messageId });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Resend API error:', response.status, errorData);
+      return false;
+    }
+
+    const result = await response.json() as { id?: string };
+    console.log('Email sent via Resend', { id: result.id });
     return true;
   } catch (error: any) {
-    // Binding throws on failure (e.g. E_SENDER_NOT_VERIFIED, E_RECIPIENT_SUPPRESSED)
-    console.error('Email send error:', error?.code ?? '', error?.message ?? error);
+    console.error('Email send error:', error?.message ?? error);
     return false;
   }
 }
