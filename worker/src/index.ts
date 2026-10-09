@@ -19,7 +19,26 @@ interface Env {
 const RP_NAME = 'smkn apps';
 const RP_ID = 'git.smkn.net';
 const ORIGIN = 'https://git.smkn.net';
-const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days (ms)
+// __Host- prefix: browser enforces Secure, Path=/ and no Domain, and the
+// distinct name cannot collide with other cookies on git.smkn.net
+// (e.g. a leftover Clerk "__session" cookie).
+const SESSION_COOKIE = '__Host-smkn_session';
+
+// Parse the Cookie header and return the value of an exact cookie name.
+function getCookie(request: Request, name: string): string | null {
+  const header = request.headers.get('Cookie');
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    if (part.slice(0, idx).trim() === name) {
+      const value = part.slice(idx + 1).trim();
+      return value || null;
+    }
+  }
+  return null;
+}
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -32,13 +51,9 @@ function generateSessionId(): string {
 }
 
 async function getSession(request: Request, env: Env): Promise<string | null> {
-  const cookie = request.headers.get('Cookie');
-  if (!cookie) return null;
+  const sessionId = getCookie(request, SESSION_COOKIE);
+  if (!sessionId) return null;
 
-  const sessionMatch = cookie.match(/session=([^;]+)/);
-  if (!sessionMatch) return null;
-
-  const sessionId = sessionMatch[1];
   const now = Date.now();
 
   const session = await env.DB.prepare(
@@ -61,11 +76,11 @@ async function createSession(userId: string, env: Env): Promise<string> {
 
 function createSessionCookie(sessionId: string): string {
   const maxAge = Math.floor(SESSION_DURATION / 1000);
-  return `session=${sessionId}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`;
+  return `${SESSION_COOKIE}=${sessionId}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}; Path=/`;
 }
 
 function clearSessionCookie(): string {
-  return 'session=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/';
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/`;
 }
 
 async function cleanupExpired(env: Env): Promise<void> {
@@ -83,6 +98,7 @@ function corsHeaders(): Record<string, string> {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
+    'Cache-Control': 'no-store',
   };
 }
 
@@ -462,14 +478,11 @@ async function handleMe(request: Request, env: Env): Promise<Response> {
 // Logout
 async function handleLogout(request: Request, env: Env): Promise<Response> {
   try {
-    const cookie = request.headers.get('Cookie');
-    if (cookie) {
-      const sessionMatch = cookie.match(/session=([^;]+)/);
-      if (sessionMatch) {
-        await env.DB.prepare(
-          'DELETE FROM sessions WHERE session_id = ?'
-        ).bind(sessionMatch[1]).run();
-      }
+    const sessionId = getCookie(request, SESSION_COOKIE);
+    if (sessionId) {
+      await env.DB.prepare(
+        'DELETE FROM sessions WHERE session_id = ?'
+      ).bind(sessionId).run();
     }
 
     return new Response(JSON.stringify({ success: true }), {
