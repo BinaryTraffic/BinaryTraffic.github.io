@@ -257,23 +257,50 @@
     // Eye tracking animation
     (function() {
       const mascot = document.getElementById('mascot');
-      const eyeGroup = mascot.querySelector('.eyeGroup .eye');
+      if (!mascot) {
+        console.warn('Mascot SVG not found');
+        return;
+      }
       
-      if (!eyeGroup) return;
+      const eyeGroup = mascot.querySelector('.eyeGroup .eye');
+      if (!eyeGroup) {
+        console.warn('Eye group not found');
+        return;
+      }
       
       // Check for reduced motion preference
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (prefersReducedMotion) return;
+      const lerpFactor = prefersReducedMotion ? 0.9 : 0.15; // Snap faster if reduced motion
+      const restLerpFactor = prefersReducedMotion ? 0.9 : 0.1;
       
-      // Get eye rotation center from bbox
-      const eyeBBox = eyeGroup.getBBox();
-      const centerX = eyeBBox.x + eyeBBox.width / 2;
-      const centerY = eyeBBox.y + eyeBBox.height / 2;
-      
+      let centerX = 0;
+      let centerY = 0;
+      let isInitialized = false;
       let targetAngle = 0;
       let currentAngle = 0;
       let isPointerInWindow = false;
       let animationFrameId = null;
+      
+      // Initialize eye center lazily (after SVG is fully rendered)
+      function initEyeCenter() {
+        if (isInitialized) return true;
+        
+        try {
+          const eyeBBox = eyeGroup.getBBox();
+          if (eyeBBox.width === 0 || eyeBBox.height === 0) {
+            console.warn('Eye bbox not ready, retrying...');
+            return false;
+          }
+          centerX = eyeBBox.x + eyeBBox.width / 2;
+          centerY = eyeBBox.y + eyeBBox.height / 2;
+          isInitialized = true;
+          console.log('Eye tracking initialized', { centerX, centerY });
+          return true;
+        } catch (error) {
+          console.error('Failed to get eye bbox:', error);
+          return false;
+        }
+      }
       
       // Shortest angle difference for smooth rotation
       function angleDiff(a, b) {
@@ -288,35 +315,52 @@
       
       // Update eye rotation based on pointer position
       function updateEyePosition(clientX, clientY) {
-        // Convert screen coordinates to SVG coordinates
-        const svg = mascot;
-        const point = svg.createSVGPoint();
-        point.x = clientX;
-        point.y = clientY;
+        if (!isInitialized && !initEyeCenter()) return;
         
-        const ctm = svg.getScreenCTM();
-        if (!ctm) return;
-        
-        const svgPoint = point.matrixTransform(ctm.inverse());
-        
-        // Calculate angle from eye center to pointer
-        const dx = svgPoint.x - centerX;
-        const dy = svgPoint.y - centerY;
-        targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+        try {
+          // Convert screen coordinates to SVG coordinates
+          const point = mascot.createSVGPoint();
+          point.x = clientX;
+          point.y = clientY;
+          
+          const ctm = mascot.getScreenCTM();
+          if (!ctm) {
+            console.warn('getScreenCTM returned null');
+            return;
+          }
+          
+          const svgPoint = point.matrixTransform(ctm.inverse());
+          
+          // Calculate angle from eye center to pointer
+          const dx = svgPoint.x - centerX;
+          const dy = svgPoint.y - centerY;
+          targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+        } catch (error) {
+          console.error('Error in updateEyePosition:', error);
+        }
       }
       
       // Animation loop with smooth interpolation
       function animate() {
-        if (isPointerInWindow) {
-          // Smooth lerp with 0.15 factor for smooth tracking
-          currentAngle = lerp(currentAngle, targetAngle, 0.15);
-        } else {
-          // Return to rest (0 degrees)
-          currentAngle = lerp(currentAngle, 0, 0.1);
+        if (!isInitialized && !initEyeCenter()) {
+          animationFrameId = requestAnimationFrame(animate);
+          return;
         }
         
-        // Apply rotation transform
-        eyeGroup.setAttribute('transform', `rotate(${currentAngle}, ${centerX}, ${centerY})`);
+        try {
+          if (isPointerInWindow) {
+            // Smooth lerp with dynamic factor based on reduced motion
+            currentAngle = lerp(currentAngle, targetAngle, lerpFactor);
+          } else {
+            // Return to rest (0 degrees)
+            currentAngle = lerp(currentAngle, 0, restLerpFactor);
+          }
+          
+          // Apply rotation transform
+          eyeGroup.setAttribute('transform', `rotate(${currentAngle}, ${centerX}, ${centerY})`);
+        } catch (error) {
+          console.error('Error in animate:', error);
+        }
         
         animationFrameId = requestAnimationFrame(animate);
       }
@@ -327,19 +371,34 @@
         updateEyePosition(e.clientX, e.clientY);
       }
       
-      function handlePointerLeave() {
-        isPointerInWindow = false;
+      function handlePointerLeave(e) {
+        // Only reset if pointer actually left the window
+        if (e.target === document.documentElement || e.relatedTarget === null) {
+          isPointerInWindow = false;
+        }
       }
       
-      // Attach events
-      document.addEventListener('pointermove', handlePointerMove);
-      document.addEventListener('touchmove', (e) => {
+      // Attach events to window/document
+      window.addEventListener('pointermove', handlePointerMove, { passive: true });
+      window.addEventListener('touchmove', (e) => {
         if (e.touches.length > 0) {
           handlePointerMove(e.touches[0]);
         }
+      }, { passive: true });
+      
+      // Use mouseout on document to detect when mouse leaves viewport
+      document.addEventListener('mouseout', (e) => {
+        if (!e.relatedTarget && !e.toElement) {
+          isPointerInWindow = false;
+        }
       });
-      document.addEventListener('mouseleave', handlePointerLeave);
-      window.addEventListener('blur', handlePointerLeave);
+      
+      window.addEventListener('blur', () => {
+        isPointerInWindow = false;
+      });
+      
+      // Try to initialize immediately
+      setTimeout(initEyeCenter, 100);
       
       // Start animation loop
       animate();
