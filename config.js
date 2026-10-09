@@ -8,10 +8,8 @@
 // 5. Dashboard → Settings で Allowed origins に https://git.smkn.net を追加
 
 window.CLERK_CONFIG = {
-  publishableKey: 'YOUR_PUBLISHABLE_KEY_HERE'
+  publishableKey: 'pk_test_ZmVhc2libGUtc2VhZ3VsbC04NTEzLmNsZXJrLmFjY291bnRzLmRldiQ',
+  frontendApi: 'feasible-seagull-8513.clerk.accounts.dev'
 };
 
-// 認証設定のチェック
-if (window.CLERK_CONFIG.publishableKey === 'YOUR_PUBLISHABLE_KEY_HERE') {
-  console.warn('⚠️ config.js の publishableKey を設定してください');
-}
+// 認証設定完了

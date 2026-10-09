@@ -97,7 +97,7 @@
       showError('認証設定が完了していません。config.js を確認してください。');
     } else {
       const clerkScript = document.createElement('script');
-      clerkScript.src = 'https://accounts.app.clerk.com/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+      clerkScript.src = `https://${window.CLERK_CONFIG.frontendApi}/npm/@clerk/clerk-js@latest/dist/clerk.browser.js`;
       clerkScript.async = true;
       clerkScript.crossOrigin = 'anonymous';
       
