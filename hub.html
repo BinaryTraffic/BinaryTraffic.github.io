@@ -280,6 +280,9 @@
       let currentAngle = 0;
       let isPointerInWindow = false;
       let isTouchDown = false; // Track if touch is currently pressed
+      let lastTouchPageX = null; // Remember last touched page coordinate
+      let lastTouchPageY = null;
+      let lastTouchTime = 0; // Timestamp of last touch event
       let animationFrameId = null;
       
       // Initialize eye center lazily (after SVG is fully rendered)
@@ -349,14 +352,23 @@
         }
         
         try {
-          // Track if: (mouse hover on desktop) OR (touch is actively pressed)
-          const shouldTrack = isPointerInWindow || isTouchDown;
+          // Recompute angle from remembered touch position (handles scroll/resize)
+          if (lastTouchPageX !== null && lastTouchPageY !== null && !isTouchDown) {
+            // Convert page coordinates to client coordinates (accounting for scroll)
+            const clientX = lastTouchPageX - window.pageXOffset;
+            const clientY = lastTouchPageY - window.pageYOffset;
+            updateEyePosition(clientX, clientY);
+          }
           
-          if (shouldTrack) {
-            // Smooth lerp with dynamic factor based on reduced motion
+          // Decide animation behavior based on input state
+          if (isPointerInWindow || isTouchDown) {
+            // Mouse hover or active touch: smooth lerp to target
             currentAngle = lerp(currentAngle, targetAngle, lerpFactor);
+          } else if (lastTouchPageX !== null) {
+            // Touch released: hold at remembered position (no lerp)
+            currentAngle = targetAngle;
           } else {
-            // Return to rest (0 degrees)
+            // No interaction: return to rest (0 degrees)
             currentAngle = lerp(currentAngle, 0, restLerpFactor);
           }
           
@@ -373,6 +385,9 @@
       function handlePointerDown(e) {
         if (e.pointerType === 'touch') {
           isTouchDown = true;
+          lastTouchPageX = e.pageX;
+          lastTouchPageY = e.pageY;
+          lastTouchTime = Date.now();
           updateEyePosition(e.clientX, e.clientY);
         }
       }
@@ -381,11 +396,19 @@
         if (e.pointerType === 'touch') {
           // Touch: only track while pressed
           if (isTouchDown) {
+            lastTouchPageX = e.pageX;
+            lastTouchPageY = e.pageY;
+            lastTouchTime = Date.now();
             updateEyePosition(e.clientX, e.clientY);
           }
-        } else {
+        } else if (e.pointerType === 'mouse') {
           // Mouse: track on hover (existing behavior)
           isPointerInWindow = true;
+          // Don't clear touch memory if a mouse event comes too soon after touch (compatibility events)
+          if (Date.now() - lastTouchTime > 1000) {
+            lastTouchPageX = null;
+            lastTouchPageY = null;
+          }
           updateEyePosition(e.clientX, e.clientY);
         }
       }
@@ -393,12 +416,16 @@
       function handlePointerUp(e) {
         if (e.pointerType === 'touch') {
           isTouchDown = false;
+          lastTouchTime = Date.now();
+          // Keep lastTouchPageX/Y to remember position
         }
       }
 
       function handlePointerCancel(e) {
         if (e.pointerType === 'touch') {
           isTouchDown = false;
+          lastTouchTime = Date.now();
+          // Keep lastTouchPageX/Y to remember position
         }
       }
       
@@ -406,6 +433,11 @@
         // Only reset if pointer actually left the window (mouse only)
         if (!e.relatedTarget && !e.toElement) {
           isPointerInWindow = false;
+          // Don't clear touch memory if mouse leaves soon after touch
+          if (Date.now() - lastTouchTime > 1000) {
+            lastTouchPageX = null;
+            lastTouchPageY = null;
+          }
         }
       }
       
